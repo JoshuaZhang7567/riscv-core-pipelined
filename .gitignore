@@ -1,0 +1,21 @@
+# --- Simulation Outputs ---
+# Compiled binaries and temporary execution files
+*.out
+*.log
+
+# --- Waveform Data ---
+# These files can be huge and shouldn't be uploaded to GitHub
+*.vcd
+*.fst
+*.gtkw
+
+# --- Synthesis Outputs ---
+# FPGA build artifacts
+synth/project/**
+!synth/project/.gitkeep
+
+# --- macOS Metadata ---
+.DS_Store
+
+# --- VS Code Settings ---
+.vscode/
