@@ -21,8 +21,14 @@ module regfile (
       rf[rd] <= write_data;
   end
 
-  // Asynchronous reads (x0 returns 0)
-  assign read_data1 = (rs1 != '0) ? rf[rs1] : '0;
-  assign read_data2 = (rs2 != '0) ? rf[rs2] : '0;
+  // Asynchronous reads with write-first forwarding
+  // If the register being read is simultaneously being written (WB→ID),
+  // forward the write data directly to avoid a stale read.
+  assign read_data1 = (rs1 == '0)                          ? '0 :
+                      (rs1 == rd && reg_write)              ? write_data :
+                                                             rf[rs1];
+  assign read_data2 = (rs2 == '0)                          ? '0 :
+                      (rs2 == rd && reg_write)              ? write_data :
+                                                             rf[rs2];
 
 endmodule

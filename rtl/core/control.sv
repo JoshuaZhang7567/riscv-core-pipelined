@@ -1,5 +1,9 @@
 // Control Unit — decodes opcode/funct3/funct7 into datapath control signals.
 // Covers all 40 unprivileged RV32I instructions.
+//
+// Pipeline note: Branch resolution (pc_src) is NOT computed here.
+// The `branch` and `jump` flags are piped to EX, where the ALU zero flag
+// and funct3 determine pc_src.
 
 import riscv_pkg::*;
 
@@ -8,9 +12,6 @@ module control (
     input  opcode_t              opcode,
     input  logic [2:0]           funct3,
     input  logic [6:0]           funct7,
-
-    // ALU flags (for branch decisions)
-    input  logic                 zero,
 
     // Control outputs
     output logic                 reg_write,
@@ -22,11 +23,10 @@ module control (
     output mem_size_t            mem_size,
     output logic                 mem_unsigned, // 0=sign-ext, 1=zero-ext
     output result_src_t          result_src,   // ALU=00, MEM=01, PC+4=10
-    output logic [1:0]           pc_src,       // PC+4=00, PC+Imm=01, ALU=10
-    output imm_src_t             imm_src
+    output imm_src_t             imm_src,
+    output logic                 branch,       // 1 = conditional branch
+    output logic                 jump          // 1 = JAL or JALR
 );
-
-    logic branch_taken;
 
     always_comb begin
         // Safe defaults — no writes, no branches
@@ -39,9 +39,9 @@ module control (
         mem_size     = MEM_WORD;
         mem_unsigned = 1'b0;
         result_src   = RESULT_ALU;
-        pc_src       = 2'b00;
         imm_src      = IMM_I;
-        branch_taken = 1'b0;
+        branch       = 1'b0;
+        jump         = 1'b0;
 
         case (opcode)
 
@@ -120,8 +120,9 @@ module control (
                 endcase
             end
 
-            // Branch
+            // Branch — ALU computes comparison, EX stage resolves taken/not-taken
             OP_BRANCH: begin
+                branch    = 1'b1;
                 alu_src_2 = 1'b0;
                 imm_src   = IMM_B;
 
@@ -132,26 +133,13 @@ module control (
                     F3_BLTU, F3_BGEU: alu_control = ALU_SLTU;
                     default:          alu_control = ALU_SUB;
                 endcase
-
-                // Evaluate branch condition
-                case (funct3)
-                    F3_BEQ:  branch_taken =  zero;
-                    F3_BNE:  branch_taken = ~zero;
-                    F3_BLT:  branch_taken = ~zero;  // SLT==1 → taken
-                    F3_BGE:  branch_taken =  zero;  // SLT==0 → taken
-                    F3_BLTU: branch_taken = ~zero;
-                    F3_BGEU: branch_taken =  zero;
-                    default: branch_taken = 1'b0;
-                endcase
-
-                pc_src = branch_taken ? 2'b01 : 2'b00;
             end
 
             // JAL: rd ← PC+4, PC ← PC+Imm
             OP_JAL: begin
                 reg_write  = 1'b1;
                 result_src = RESULT_PC4;
-                pc_src     = 2'b01;
+                jump       = 1'b1;
                 imm_src    = IMM_J;
             end
 
@@ -161,7 +149,7 @@ module control (
                 alu_src_2   = 1'b1;
                 alu_control = ALU_ADD;
                 result_src  = RESULT_PC4;
-                pc_src      = 2'b10;
+                jump        = 1'b1;
                 imm_src     = IMM_I;
             end
 

@@ -22,6 +22,7 @@ RTL_SRC   = $(PKG) \
             rtl/lib/flopr.sv rtl/lib/flopenr.sv \
             $(CORE_DIR)/pc.sv $(CORE_DIR)/alu.sv $(CORE_DIR)/regfile.sv \
             $(CORE_DIR)/immgen.sv $(CORE_DIR)/control.sv \
+            $(CORE_DIR)/hazard.sv \
             $(MEM_DIR)/imem.sv $(MEM_DIR)/dmem.sv \
             $(TOP_DIR)/riscv_top.sv
 
