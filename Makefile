@@ -19,7 +19,6 @@ PKG       = rtl/riscv_pkg.sv
 # --- All RTL source files ---
 RTL_SRC   = $(PKG) \
             rtl/lib/adder.sv rtl/lib/mux2.sv rtl/lib/mux3.sv \
-            rtl/lib/flopr.sv rtl/lib/flopenr.sv \
             $(CORE_DIR)/pc.sv $(CORE_DIR)/alu.sv $(CORE_DIR)/regfile.sv \
             $(CORE_DIR)/immgen.sv $(CORE_DIR)/control.sv \
             $(CORE_DIR)/hazard.sv \
