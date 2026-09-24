@@ -1,64 +1,68 @@
-# ===========================================================================
-# RISC-V RV32I CPU — Project Makefile
-# ===========================================================================
+# --- Tools and paths (override on the command line, e.g. make IVFLAGS=...) ---
+IVERILOG ?= iverilog
+IVFLAGS  := -g2012
+BUILD    := build
+SIM      := $(BUILD)/tb_riscv_universal.vvp
+TESTDIR := sw/asm
+TEST_HEX := $(wildcard $(TESTDIR)/*.hex)
+PASSES := $(patsubst $(TESTDIR)/%.hex,$(BUILD)/%.pass,$(TEST_HEX))
+TESTS := $(patsubst $(TESTDIR)/%.hex,%,$(TEST_HEX))
+T ?= test_basic
+WAVE_VIEWER ?= surfer
 
-CC        = iverilog
-CFLAGS    = -g2012    # SystemVerilog 2012
-
-# --- Directories ---
-CORE_DIR  = rtl/core
-MEM_DIR   = rtl/mem
-PERIPH_DIR= rtl/periph
-TOP_DIR   = rtl/top
-TB_SYS    = tb/system
-WAVE_DIR  = sim/waveforms
-
-# --- Package (must be compiled first) ---
-PKG       = rtl/riscv_pkg.sv
-
-# --- All RTL source files ---
-RTL_SRC   = $(PKG) \
+# All sources, in compile order (package first: other files import it)
+SRC      := rtl/riscv_pkg.sv \
             rtl/lib/adder.sv rtl/lib/mux2.sv rtl/lib/mux3.sv \
-            $(CORE_DIR)/pc.sv $(CORE_DIR)/alu.sv $(CORE_DIR)/regfile.sv \
-            $(CORE_DIR)/immgen.sv $(CORE_DIR)/control.sv \
-            $(CORE_DIR)/hazard.sv \
-            $(MEM_DIR)/imem.sv $(MEM_DIR)/dmem.sv \
-            $(TOP_DIR)/riscv_top.sv
+            rtl/core/pc.sv rtl/core/alu.sv rtl/core/regfile.sv \
+            rtl/core/immgen.sv rtl/core/control.sv \
+            rtl/core/hazard.sv \
+            rtl/mem/imem.sv rtl/mem/dmem.sv \
+            rtl/top/riscv_top.sv \
+            tb/system/tb_riscv_universal.sv
 
-# --- Universal testbench ---
-UNIV_SRC  = $(RTL_SRC) $(TB_SYS)/tb_riscv_universal.sv
-UNIV_OUT  = $(WAVE_DIR)/tb_riscv_universal.out
+# If a recipe fails, delete the target it was writing
+.DELETE_ON_ERROR:
 
-# Compile (only needs to happen once unless RTL changes)
-test_compile:
-	mkdir -p $(WAVE_DIR)
-	$(CC) $(CFLAGS) -o $(UNIV_OUT) $(UNIV_SRC)
+# Default goal: first target in the file
+all: compile
 
-# Run a single test
-test: test_compile
-	vvp $(UNIV_OUT) +HEX_FILE=$(HEX) +EXPECTED=$(EXP)
+test:
+	-$(MAKE) -k run
+	@pass=0; fail=0; \
+	for t in $(TESTS); do \
+	  if [ -f $(BUILD)/$$t.pass ] && grep -q "RESULT: PASS" $(BUILD)/$$t.log 2>/dev/null; then \
+	    echo "  PASS  $$t"; pass=$$((pass+1)); \
+	  else \
+	    echo "  FAIL  $$t   (see $(BUILD)/$$t.log)"; fail=$$((fail+1)); \
+	  fi; \
+	done; \
+	echo "  $$pass passed, $$fail failed"; \
+	[ $$fail -eq 0 ]
 
-# Run all tests
-test_all: test_compile
-	@echo ""
-	@echo "============================================================"
-	@echo "  Running all tests..."
-	@echo "============================================================"
-	@vvp $(UNIV_OUT) +HEX_FILE=sw/asm/test_basic.hex    +EXPECTED=sw/asm/test_basic.expected
-	@vvp $(UNIV_OUT) +HEX_FILE=sw/asm/test_alu.hex      +EXPECTED=sw/asm/test_alu.expected
-	@vvp $(UNIV_OUT) +HEX_FILE=sw/asm/test_branches.hex +EXPECTED=sw/asm/test_branches.expected
-	@vvp $(UNIV_OUT) +HEX_FILE=sw/asm/test_memory.hex   +EXPECTED=sw/asm/test_memory.expected
-	@vvp $(UNIV_OUT) +HEX_FILE=sw/asm/test_upper.hex    +EXPECTED=sw/asm/test_upper.expected
-	@vvp $(UNIV_OUT) +HEX_FILE=sw/asm/test_edge.hex     +EXPECTED=sw/asm/test_edge.expected
-	@vvp $(UNIV_OUT) +HEX_FILE=sw/asm/test_fibonacci.hex +EXPECTED=sw/asm/test_fibonacci.expected
 
-test_wave:
-	gtkwave $(WAVE_DIR)/riscv_universal.vcd &
+run: $(PASSES)
 
-# ===========================================================================
-# Helpers
-# ===========================================================================
+waves: $(BUILD)/$(T).vcd
+	$(WAVE_VIEWER) $< &
+
+compile: $(SIM)
+
+# Compile once; rebuilds only when a source is newer than the binary
+$(SIM): $(SRC)
+	mkdir -p $(BUILD)
+	$(IVERILOG) $(IVFLAGS) -o $@ $^
+
+# Run one test. The .log is always kept for debugging;
+# the .pass marker exists only if this run passed.
+$(BUILD)/%.pass: $(SIM) $(TESTDIR)/%.hex $(TESTDIR)/%.expected
+	rm -f $@
+	vvp -n $(SIM) +HEX_FILE=$(TESTDIR)/$*.hex +EXPECTED=$(TESTDIR)/$*.expected > $(BUILD)/$*.log
+	touch $@
+
+$(BUILD)/%.vcd: $(SIM) $(TESTDIR)/%.hex $(TESTDIR)/%.expected
+	-vvp -n $(SIM) +HEX_FILE=$(TESTDIR)/$*.hex +EXPECTED=$(TESTDIR)/$*.expected +VCD=$@ > $(BUILD)/$*.wave.log
+
 clean:
-	rm -rf $(WAVE_DIR)/*.out $(WAVE_DIR)/*.vcd
+	rm -rf $(BUILD)
 
-.PHONY: test_compile test test_all test_wave clean
+.PHONY: all compile clean test run waves

@@ -66,23 +66,27 @@ module tb_riscv_universal;
     // Parsing variables
     reg [128*8-1:0] hex_file;
     reg [128*8-1:0] expected_file;
+    reg [128*8-1:0] vcd_file;
     integer fd, r, num_cycles_cfg, check_type, check_addr;
     reg [31:0] check_value;
+    bit passed;
 
     initial begin
-        $dumpfile("sim/waveforms/riscv_universal.vcd");
-        $dumpvars(0, tb_riscv_universal);
+        if ($value$plusargs("VCD=%s", vcd_file)) begin
+            $dumpfile(vcd_file);
+            $dumpvars(0, tb_riscv_universal);
+        end
 
         // Read command-line args
         if (!$value$plusargs("HEX_FILE=%s", hex_file)) begin
             $display("ERROR: No program specified.");
             $display("  Usage: vvp <out_file> +HEX_FILE=<path.hex> +EXPECTED=<path.expected>");
-            $finish;
+            $fatal;
         end
         if (!$value$plusargs("EXPECTED=%s", expected_file)) begin
             $display("ERROR: No expected-results file specified.");
             $display("  Usage: vvp <out_file> +HEX_FILE=<path.hex> +EXPECTED=<path.expected>");
-            $finish;
+            $fatal;
         end
 
         // Load program while CPU is held in reset
@@ -93,12 +97,12 @@ module tb_riscv_universal;
         fd = $fopen(expected_file, "r");
         if (fd == 0) begin
             $display("ERROR: Cannot open file: %0s", expected_file);
-            $finish;
+            $fatal;
         end
         r = $fscanf(fd, "%d", num_cycles_cfg);
         if (r != 1) begin
             $display("ERROR: Could not read cycle count from %0s", expected_file);
-            $finish;
+            $fatal;
         end
 
         // Release reset
@@ -135,14 +139,19 @@ module tb_riscv_universal;
         $display("");
         $display("----------------------------------------------------------------");
         $display("  Passed: %0d   Failed: %0d", pass_count, fail_count);
-        if (fail_count == 0)
-            $display("  >>> ALL TESTS PASSED <<<");
-        else
-            $display("  >>> SOME TESTS FAILED <<<");
-        $display("----------------------------------------------------------------");
-        $display("");
+        passed = (!fail_count && pass_count);     // the ONE place the verdict is decided
 
-        $finish;
+        if (passed)
+            $display("RESULT: PASS  %0s", hex_file);
+        else
+            $display("RESULT: FAIL  %0s  (passed=%0d failed=%0d)", hex_file, pass_count, fail_count);
+        $display("----------------------------------------------------------------");
+
+        if (passed)
+            $finish;
+        else
+            $fatal(1, "Test failed: %0s", hex_file);
+
     end
 
 endmodule

@@ -3,7 +3,7 @@
 Generate all RV32I test programs.
 
 Run:  python3 tools/generate_tests.py
-Then: make test_all
+Then: make test
 """
 
 import sys, os
@@ -386,5 +386,5 @@ if __name__ == "__main__":
     gen_test_fibonacci()
     print()
     print("=" * 60)
-    print("  Done! Run 'make test_all' to execute all tests.")
+    print("  Done! Run 'make test' to execute all tests.")
     print("=" * 60)

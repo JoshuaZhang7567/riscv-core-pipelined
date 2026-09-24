@@ -1,5 +1,6 @@
 # --- Simulation Outputs ---
 # Compiled binaries and temporary execution files
+build/
 *.out
 *.log
 
@@ -9,10 +10,8 @@
 *.fst
 *.gtkw
 
-# --- Synthesis Outputs ---
-# FPGA build artifacts
-synth/project/**
-!synth/project/.gitkeep
+# --- Python ---
+__pycache__/
 
 # --- macOS Metadata ---
 .DS_Store
