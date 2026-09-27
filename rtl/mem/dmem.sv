@@ -38,60 +38,63 @@ module dmem
 
     output logic [XLEN-1:0] read_data
 );
-    // declare ram
-    logic [31:0] ram [0:DEPTH-1];
+    // RAM as 4 byte lanes per word: the byte-enable form Quartus infers as RAM.
+    // ram[i] still reads as a full 32-bit word.
+    logic [3:0][7:0] ram [0:DEPTH-1];
 
     // Drop byte-select bits [1:0] to get word index
     localparam int WORD_ADDR_W = $clog2(DEPTH);
     logic [WORD_ADDR_W-1:0] word_addr;
     assign word_addr = addr[WORD_ADDR_W+1:2];
 
+    // Byte enables + store data replicated onto the lanes it may land in
+    logic [3:0]  byte_en;
+    logic [31:0] lane_data;
+
+    always_comb begin
+        case (mem_size)
+            MEM_BYTE: begin
+                byte_en   = 4'b0001 << addr[1:0];
+                lane_data = {4{write_data[7:0]}};
+            end
+            MEM_HALF: begin
+                byte_en   = addr[1] ? 4'b1100 : 4'b0011;
+                lane_data = {2{write_data[15:0]}};
+            end
+            MEM_WORD: begin
+                byte_en   = 4'b1111;
+                lane_data = write_data;
+            end
+            default: begin
+                byte_en   = 4'b0000;
+                lane_data = write_data;
+            end
+        endcase
+    end
+
     // write data logic
     always_ff @(posedge clk) begin
-        if(mem_write) begin
-            case (mem_size)
-                MEM_BYTE: begin
-                    case (addr[1:0])
-                        2'b00: ram[word_addr][7:0] <= write_data[7:0];
-                        2'b01: ram[word_addr][15:8] <= write_data[7:0];
-                        2'b10: ram[word_addr][23:16] <= write_data[7:0];
-                        2'b11: ram[word_addr][31:24] <= write_data[7:0];
-                    endcase
-                end
-                MEM_HALF: begin
-                    case (addr[1])
-                        1'b0: ram[word_addr][15:0] <= write_data[15:0];
-                        1'b1: ram[word_addr][31:16] <= write_data[15:0];
-                    endcase
-                end
-                MEM_WORD: ram[word_addr] <= write_data;
-                default: ;
-            endcase
+        if (mem_write) begin
+            for (int i = 0; i < 4; i++)
+                if (byte_en[i]) ram[word_addr][i] <= lane_data[8*i +: 8];
         end
     end
 
-    // read data logic
+    // read data logic: pick the addressed byte/half, then sign- or zero-extend
+    logic [31:0] word;
+    logic [7:0]  rd_byte;
+    logic [15:0] rd_half;
+    assign word    = ram[word_addr];
+    assign rd_byte = word[8*addr[1:0] +: 8];
+    assign rd_half = addr[1] ? word[31:16] : word[15:0];
+
     always_comb begin
-        if(mem_read) begin
+        if (mem_read) begin
             case (mem_size)
-                MEM_BYTE: begin
-                    case (addr[1:0])
-                        2'b00: read_data = mem_unsigned ? {24'b0, ram[word_addr][7:0]}   : {{24{ram[word_addr][7]}},  ram[word_addr][7:0]};
-                        2'b01: read_data = mem_unsigned ? {24'b0, ram[word_addr][15:8]}  : {{24{ram[word_addr][15]}}, ram[word_addr][15:8]};
-                        2'b10: read_data = mem_unsigned ? {24'b0, ram[word_addr][23:16]} : {{24{ram[word_addr][23]}}, ram[word_addr][23:16]};
-                        2'b11: read_data = mem_unsigned ? {24'b0, ram[word_addr][31:24]} : {{24{ram[word_addr][31]}}, ram[word_addr][31:24]};
-                    endcase
-                end
-                MEM_HALF: begin
-                    case (addr[1])
-                        1'b0: read_data = mem_unsigned ? {16'b0, ram[word_addr][15:0]}  : {{16{ram[word_addr][15]}}, ram[word_addr][15:0]};
-                        1'b1: read_data = mem_unsigned ? {16'b0, ram[word_addr][31:16]} : {{16{ram[word_addr][31]}}, ram[word_addr][31:16]};
-                    endcase
-                end
-                MEM_WORD: begin
-                    read_data = ram[word_addr];
-                end
-                default: read_data = '0;
+                MEM_BYTE: read_data = mem_unsigned ? {24'b0, rd_byte} : {{24{rd_byte[7]}},  rd_byte};
+                MEM_HALF: read_data = mem_unsigned ? {16'b0, rd_half} : {{16{rd_half[15]}}, rd_half};
+                MEM_WORD: read_data = word;
+                default:  read_data = '0;
             endcase
         end
         else read_data = '0; // output zero (turn it off) when not reading (mem_read is 0)

@@ -19,8 +19,10 @@ module tb_riscv_universal;
         .IMEM_DEPTH  (1024),
         .DMEM_DEPTH  (1024)
     ) dut (
-        .clk   (clk),
-        .reset (reset)
+        .clk    (clk),
+        .reset  (reset),
+        .io_out (),
+        .io_in  ('0)
     );
 
     // Scoreboard

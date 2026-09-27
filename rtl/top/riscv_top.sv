@@ -14,7 +14,11 @@ module riscv_top #(
     parameter int unsigned DMEM_DEPTH      = 1024
 ) (
     input  logic clk,
-    input  logic reset
+    input  logic reset,
+
+    // Memory-mapped I/O (addresses with bit 31 set; see MEM stage)
+    output logic [XLEN-1:0] io_out,   // SW to 0x8000_0000 writes this register
+    input  logic [XLEN-1:0] io_in     // LW from 0x8000_0004 reads this value
 );
 
     // ========================================================================
@@ -73,7 +77,10 @@ module riscv_top #(
     // ========================================================================
     logic [XLEN-1:0] instr_D, pc_D, pc_plus4_D;
 
-    always_ff @(posedge clk, posedge reset)
+    // Synchronous reset: flushD is a synchronous signal, so it cannot share an
+    // async-reset condition (Quartus error 10200). Reset is held for several
+    // cycles, so a synchronous clear is equivalent here.
+    always_ff @(posedge clk)
         if (reset || flushD) begin
             instr_D    <= 32'h0000_0013; // NOP (addi x0, x0, 0)
             pc_D       <= '0;
@@ -171,7 +178,8 @@ module riscv_top #(
     logic [XLEN-1:0] rd1_E, rd2_E, pc_E, pc_plus4_E, immext_E;
     logic [4:0]      rs1_E, rs2_E, rd_E;
 
-    always_ff @(posedge clk, posedge reset)
+    // Synchronous reset for the same reason as IF/ID (flushE is synchronous)
+    always_ff @(posedge clk)
         if (reset || flushE) begin
             // Control — all zeros = NOP (no writes, no branches)
             reg_write_E    <= 1'b0;
@@ -362,18 +370,35 @@ module riscv_top #(
     // ========================================================================
     //  MEMORY (MEM) Stage
     // ========================================================================
-    logic [XLEN-1:0] mem_read_data_M;
+    logic [XLEN-1:0] mem_read_data_M, dmem_read_data_M;
+
+    // Address map: bit 31 clear = data memory, bit 31 set = I/O.
+    //   0x8000_0000  io_out (write)    0x8000_0004  io_in (read)
+    // I/O accesses should be full-word (SW/LW).
+    logic io_sel_M;
+    assign io_sel_M = alu_result_M[31];
 
     dmem #(.DEPTH(DMEM_DEPTH)) data_mem (
         .clk          (clk),
-        .mem_write    (mem_write_M),
+        .mem_write    (mem_write_M & ~io_sel_M),
         .mem_read     (mem_read_M),
         .mem_size     (mem_size_M),
         .mem_unsigned (mem_unsigned_M),
         .addr         (alu_result_M),
         .write_data   (write_data_M),
-        .read_data    (mem_read_data_M)
+        .read_data    (dmem_read_data_M)
     );
+
+    // Output register
+    always_ff @(posedge clk, posedge reset)
+        if (reset)
+            io_out <= '0;
+        else if (mem_write_M && io_sel_M && !alu_result_M[2])
+            io_out <= write_data_M;
+
+    // Load data: I/O region or data memory
+    assign mem_read_data_M = !io_sel_M       ? dmem_read_data_M :
+                             alu_result_M[2] ? io_in            : io_out;
 
     // ========================================================================
     //  MEM/WB Pipeline Register

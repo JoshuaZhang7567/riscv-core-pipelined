@@ -75,6 +75,19 @@ checks ignore `x0`, which is hardwired to zero.
 
 Both sizes are parameters of `riscv_top`.
 
+### Memory-mapped I/O
+
+Addresses with bit 31 set go to I/O instead of data memory. Use full-word
+`SW`/`LW`:
+
+| Address | Access | Meaning |
+|---|---|---|
+| `0x8000_0000` | write (read back) | `io_out` register, a top-level output port |
+| `0x8000_0004` | read | `io_in`, a top-level input port |
+
+On the DE1-SoC, `io_out` drives the LEDs and 7-segment displays, and `io_in`
+reads the switches.
+
 ### Current limitations
 
 - No CSRs, exceptions, or interrupts, so `ECALL`/`EBREAK` do nothing.
@@ -188,6 +201,10 @@ they don't affect results.
 | `make build/<test>.pass` | Run a single test; its log goes to `build/<test>.log` |
 | `make waves T=<test>` | Record a waveform for one test and open it in the viewer |
 | `make clean` | Delete everything in `build/` |
+| `make fpga-sim` | Simulate the DE1-SoC wrapper running the LED counter demo |
+| `make fpga` | Quartus compile: synthesis, fit, timing, bitstream |
+| `make fpga-program` | Program the board over USB-Blaster II |
+| `make fpga-clean` | Delete Quartus build products |
 
 Variables can be overridden on the command line, for example:
 
@@ -236,21 +253,77 @@ flowchart LR
 - **Waveforms on demand.** Regression runs don't dump waveforms. `make waves`
   reruns one test with `+VCD=<file>` and opens the result.
 
+## Running on an FPGA (Terasic DE1-SoC)
+
+The [`fpga/de1soc/`](fpga/de1soc/) Quartus project targets the Cyclone V SoC
+(`5CSEMA5F31C6`) on the DE1-SoC board. It runs a demo program that counts up
+on the LEDs and on the 7-segment displays in hex.
+
+| Board | Function |
+|---|---|
+| `KEY[0]` | Reset |
+| `SW[9:0]` | Count speed: the delay is `(SW + 1) × 2^14` loop iterations (~760 counts/s with all switches down) |
+| `LEDR[9:0]` | Low 10 bits of the count |
+| `HEX5`–`HEX0` | Low 24 bits of the count, in hex |
+
+The board wrapper, [`rtl/fpga/de1soc_top.sv`](rtl/fpga/de1soc_top.sv), has a
+reset synchronizer for `KEY[0]` and a two-flop synchronizer for the switches.
+It maps the core's `io_out`/`io_in` ports to the board. The demo program comes
+from [`tools/gen_led_counter.py`](tools/gen_led_counter.py).
+
+### Build and program
+
+Quartus Prime Lite (free) supports Cyclone V. It runs only on x86
+Windows or Linux, not macOS.
+
+1. Check the board design in simulation (works on any machine):
+   ```bash
+   make fpga-sim
+   ```
+2. Compile. Either run `make fpga` with Quartus on your `PATH`, or open
+   `fpga/de1soc/riscv_de1soc.qpf` in the Quartus GUI and click
+   **Processing → Start Compilation**.
+3. Check the reports: the **Timing Analyzer** should show positive setup slack
+   for `CLOCK_50` (50 MHz). **Fitter → Resource Section** shows logic and
+   memory use.
+4. Connect the board's USB-Blaster II port and run `make fpga-program`. Or,
+   in the Programmer, click **Auto Detect**, attach
+   `output_files/riscv_de1soc.sof` to the `5CSEMA5` device (not the
+   `SOCVHPS`), and click **Start**.
+
+### FPGA notes
+
+- **Memories are small on the FPGA (256 words each).** Both memories read
+  asynchronously (combinationally), and the Cyclone V block RAMs (M10K) need
+  a clocked read. So Quartus builds them from logic or small MLAB blocks.
+  To use M10K, change both memories to synchronous reads and rework the
+  pipeline timing to match.
+- **`$readmemh` paths are relative to the Quartus project directory**, so the
+  demo hex lives in `fpga/de1soc/`. It is plain hex, padded with `NOP`s to the
+  full ROM depth.
+- **IF/ID and ID/EX use a synchronous reset.** Their flush is a clocked
+  signal, and Quartus rejects mixing it into an asynchronous reset condition
+  (error 10200).
+
 ## Project Structure
 
 ```
 riscv-core-pipelined/
-├── Makefile                 # Regression harness: make test / waves / clean
+├── Makefile                 # Regression harness: make test / waves / clean / fpga*
 ├── docs/
 │   └── CPU-Pipelined.png    # Pipeline datapath diagram
+├── fpga/
+│   └── de1soc/              # Quartus project (.qpf/.qsf/.sdc) and demo program hex
 ├── rtl/
 │   ├── riscv_pkg.sv         # Shared types, opcodes, ALU/control enums (compiled first)
 │   ├── core/                # control, alu, regfile, immgen, pc, hazard
 │   ├── lib/                 # Generic primitives: adder, mux2, mux3
 │   ├── mem/                 # imem (ROM), dmem (byte-addressable RAM)
-│   └── top/                 # riscv_top: pipeline registers and stage wiring
+│   ├── top/                 # riscv_top: pipeline registers, stage wiring, I/O decode
+│   └── fpga/                # DE1-SoC board wrapper and 7-segment decoder
 ├── tb/
-│   └── system/              # Universal self-checking testbench
+│   ├── system/              # Universal self-checking testbench
+│   └── fpga/                # Board-level smoke test for the DE1-SoC wrapper
 ├── sw/
 │   └── asm/                 # Test programs (.hex) and expected results (.expected)
 ├── tools/                   # Python instruction encoder and test generator

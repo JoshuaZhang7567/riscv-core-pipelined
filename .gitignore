@@ -18,3 +18,19 @@ __pycache__/
 
 # --- VS Code Settings ---
 .vscode/
+# --- Quartus build products ---
+fpga/**/db/
+fpga/**/incremental_db/
+fpga/**/qdb/
+fpga/**/output_files/
+fpga/**/tmp-clearbox/
+fpga/**/greybox_tmp/
+fpga/**/*.qws
+fpga/**/*.rpt
+fpga/**/*.summary
+fpga/**/*.smsg
+fpga/**/*.done
+fpga/**/*.pin
+fpga/**/*.jdi
+fpga/**/*.sld
+fpga/**/c5_pin_model_dump.txt
