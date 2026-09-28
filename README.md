@@ -202,9 +202,6 @@ they don't affect results.
 | `make waves T=<test>` | Record a waveform for one test and open it in the viewer |
 | `make clean` | Delete everything in `build/` |
 | `make fpga-sim` | Simulate the DE1-SoC wrapper running the LED counter demo |
-| `make fpga` | Quartus compile: synthesis, fit, timing, bitstream |
-| `make fpga-program` | Program the board over USB-Blaster II |
-| `make fpga-clean` | Delete Quartus build products |
 
 Variables can be overridden on the command line, for example:
 
@@ -271,25 +268,34 @@ reset synchronizer for `KEY[0]` and a two-flop synchronizer for the switches.
 It maps the core's `io_out`/`io_in` ports to the board. The demo program comes
 from [`tools/gen_led_counter.py`](tools/gen_led_counter.py).
 
-### Build and program
+### Build and program with Quartus Prime Lite
 
 Quartus Prime Lite (free) supports Cyclone V. It runs only on x86
-Windows or Linux, not macOS.
+Windows or Linux, not macOS. Install it with Cyclone V device support.
 
-1. Check the board design in simulation (works on any machine):
-   ```bash
-   make fpga-sim
-   ```
-2. Compile. Either run `make fpga` with Quartus on your `PATH`, or open
-   `fpga/de1soc/riscv_de1soc.qpf` in the Quartus GUI and click
-   **Processing → Start Compilation**.
-3. Check the reports: the **Timing Analyzer** should show positive setup slack
-   for `CLOCK_50` (50 MHz). **Fitter → Resource Section** shows logic and
-   memory use.
-4. Connect the board's USB-Blaster II port and run `make fpga-program`. Or,
-   in the Programmer, click **Auto Detect**, attach
-   `output_files/riscv_de1soc.sof` to the `5CSEMA5` device (not the
-   `SOCVHPS`), and click **Start**.
+1. **Open the project:** **File → Open Project**, then choose
+   `fpga/de1soc/riscv_de1soc.qpf`. The device, source files, pin assignments,
+   and timing constraints are already set up, and the demo program
+   (`led_counter.hex`) is already in that folder.
+2. **Compile:** **Processing → Start Compilation**.
+3. **Check the reports** in the Compilation Report:
+   - **Timing Analyzer:** setup slack for `CLOCK_50` (50 MHz) should be
+     positive.
+   - **Fitter → Resource Section:** logic and memory use.
+4. **Program the board:**
+   1. Plug the USB cable into the board's USB-Blaster II port and power the
+      board on.
+   2. Open **Tools → Programmer**, click **Hardware Setup**, and select
+      **DE-SoC**.
+   3. Click **Auto Detect**. The JTAG chain shows `SOCVHPS` and `5CSEMA5`.
+   4. Select the `5CSEMA5` device, click **Change File**, and choose
+      `output_files/riscv_de1soc.sof`.
+   5. Check **Program/Configure** for that device, then click **Start**.
+5. **Run it:** the count appears on `LEDR` and `HEX5`–`HEX0`. Press `KEY[0]`
+   to reset. Raise switches to slow the count down.
+
+To check the board design without hardware, run `make fpga-sim`, which
+simulates the wrapper running the demo program in Icarus Verilog.
 
 ### FPGA notes
 
@@ -309,7 +315,7 @@ Windows or Linux, not macOS.
 
 ```
 riscv-core-pipelined/
-├── Makefile                 # Regression harness: make test / waves / clean / fpga*
+├── Makefile                 # Regression harness: make test / waves / clean / fpga-sim
 ├── docs/
 │   └── CPU-Pipelined.png    # Pipeline datapath diagram
 ├── fpga/

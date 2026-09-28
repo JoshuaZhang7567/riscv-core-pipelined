@@ -22,7 +22,6 @@ SRC      := $(RTL_SRC) tb/system/tb_riscv_universal.sv
 
 # --- FPGA (Terasic DE1-SoC) ---
 FPGA_DIR     := fpga/de1soc
-FPGA_PROJ    := riscv_de1soc
 FPGA_HEX     := $(FPGA_DIR)/led_counter.hex
 FPGA_SIM     := $(BUILD)/tb_de1soc_top.vvp
 FPGA_SIM_SRC := $(RTL_SRC) rtl/fpga/hex7seg.sv rtl/fpga/de1soc_top.sv \
@@ -84,18 +83,7 @@ $(FPGA_SIM): $(FPGA_SIM_SRC)
 	mkdir -p $(BUILD)
 	$(IVERILOG) $(IVFLAGS) -o $@ $^
 
-# Synthesize, place & route, and generate the bitstream (needs Quartus on PATH)
-fpga: $(FPGA_HEX)
-	cd $(FPGA_DIR) && quartus_sh --flow compile $(FPGA_PROJ)
-
-# Program the FPGA over USB-Blaster II (device 2 in the chain; 1 is the HPS)
-fpga-program:
-	cd $(FPGA_DIR) && quartus_pgm -m jtag -o "p;output_files/$(FPGA_PROJ).sof@2"
-
 clean:
 	rm -rf $(BUILD)
 
-fpga-clean:
-	cd $(FPGA_DIR) && rm -rf db incremental_db qdb output_files tmp-clearbox greybox_tmp *.qws *.rpt *.summary *.smsg *.done *.pin *.jdi *.sld
-
-.PHONY: all compile clean test run waves fpga fpga-sim fpga-program fpga-clean
+.PHONY: all compile clean test run waves fpga-sim
